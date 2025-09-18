@@ -1,0 +1,122 @@
+Code I used (# ==== Requirements ====
+# pip install pandas numpy matplotlib pillow
+import math
+import glob
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle, FancyBboxPatch
+# -----------------------------
+# 1) CONFIDENCE: data + figures
+# -----------------------------
+# Replace with your own table as needed
+# Columns: NBRC Average, OSRC Average, OBRC Average, Old Average
+data = pd.DataFrame({
+    "NBRC Average": [70.07389163, 90.74257426, 87.68965517, 93.41584158, 97.66336634, 88.54950495, 73.2970297],
+    "OSRC Average": [91.20512821, 93.5, 90.33333333, 87.475, 96.95, 77.025,  np.nan],  # last row missing in paste
+    "OBRC Average": [78.574625,   88.096875,  76.985975,   76.353875, 86.795775, 69.229025, np.nan],
+    "Old Average":  [84.8898766,  90.7984375, 83.65965417, 81.9144375,91.8728875,73.1270125,np.nan]
+})
+# Drop rows that are all-NaN or where too many NaNs occur (adjust threshold if needed)
+df = data.dropna(how="all").reset_index(drop=True)
+# Compute condition stats
+conds = ["NBRC Average", "OSRC Average", "OBRC Average", "Old Average"]
+means = df[conds].mean(skipna=True)
+sems  = df[conds].sem(skipna=True)
+# ---- Figure A: bars with error bars (mean ± SEM)
+plt.figure(figsize=(7,5))
+x = np.arange(len(conds))
+plt.bar(x, means.values, yerr=sems.values, capsize=6)
+plt.xticks(x, ["New Big (NBRC)", "Old Small (OSRC)", "Old Big (OBRC)", "Old Avg"])
+plt.ylabel("Confidence (%)")
+plt.title("Confidence by Condition (mean ± SEM)")
+plt.tight_layout()
+plt.show()
+# ---- Figure B: spaghetti plot (subject-level paired)
+plt.figure(figsize=(7,5))
+# Only plot rows with all selected columns present
+df_pair = df[conds].dropna()
+for i, row in df_pair.iterrows():
+    plt.plot(x, row.values, alpha=0.35, marker="o")
+plt.plot(x, means.values, marker="o", linewidth=2.5)  # overlay group mean
+plt.xticks(x, ["New Big (NBRC)", "Old Small (OSRC)", "Old Big (OBRC)", "Old Avg"])
+plt.ylabel("Confidence (%)")
+plt.title("Confidence by Condition (subject traces + group mean)")
+plt.tight_layout()
+plt.show()
+# ------------------------------------------------
+# 2) “Picture graph” montage for image valuation
+# ------------------------------------------------
+# Put example images into these folders (use your real paths):
+# images/
+#   ├─ new_big/        # e.g., NB
+#   ├─ old_small/      # e.g., OS
+#   ├─ old_big/        # e.g., OB
+#   └─ old_average/    # e.g., OA
+from PIL import Image
+def montage_grid(folder_glob, max_images=8, cols=4, cell=200, title=""):
+    paths = sorted(glob.glob(folder_glob))[:max_images]
+    if not paths:
+        print(f"[montage] No images found for pattern: {folder_glob}")
+        return
+    rows = math.ceil(len(paths) / cols)
+    canvas = Image.new("RGB", (cols*cell, rows*cell), (255,255,255))
+    for i, p in enumerate(paths):
+        try:
+            im = Image.open(p).convert("RGB")
+            im = im.resize((cell, cell))
+            r, c = divmod(i, cols)
+            canvas.paste(im, (c*cell, r*cell))
+        except Exception as e:
+            print(f"Skipping {p}: {e}")
+    plt.figure(figsize=(cols*cell/100, rows*cell/100))
+    plt.imshow(canvas)
+    plt.axis("off")
+    if title:
+        plt.title(title)
+    plt.tight_layout()
+    plt.show()
+base = Path("images")
+montage_grid(str(base/"new_big/*.jpg"),   title="Image Valuation — New Big (examples)")
+montage_grid(str(base/"old_small/*.jpg"), title="Image Valuation — Old Small (examples)")
+montage_grid(str(base/"old_big/*.jpg"),   title="Image Valuation — Old Big (examples)")
+montage_grid(str(base/"old_average/*.jpg"), title="Image Valuation — Old Average (examples)")
+# --------------------------------------------------------
+# 3) Risk survey mock: lottery vs sure, size manipulations
+# --------------------------------------------------------
+def draw_choice(ax, left_box_scale=1.0, right_box_scale=1.0,
+                left_text="75% of +120\n25% of 0", right_text="+90 for sure",
+                title=""):
+    ax.set_xlim(0, 10); ax.set_ylim(0, 6)
+    ax.axis("off")
+    # base positions
+    left_center  = (3, 3)
+    right_center = (7, 3)
+    # sizes (scale = size manipulation)
+    base_w, base_h = 3.2, 2.2
+    lw, lh = base_w*left_box_scale, base_h*left_box_scale
+    rw, rh = base_w*right_box_scale, base_h*right_box_scale
+    # boxes
+    def box(center, w, h, label):
+        x0 = center[0] - w/2
+        y0 = center[1] - h/2
+        r = FancyBboxPatch((x0, y0), w, h, boxstyle="round,pad=0.03,rounding_size=0.12")
+        ax.add_patch(r)
+        ax.text(center[0], center[1], label, ha="center", va="center", fontsize=12)
+    # draw
+    box(left_center, lw, lh, left_text)
+    box(right_center, rw, rh, right_text)
+    ax.set_title(title, fontsize=13)
+# Panel 1: Same size
+fig, ax = plt.subplots(figsize=(7.5,4.5))
+draw_choice(ax, 1.0, 1.0, title="Risk Survey — Same Size")
+plt.tight_layout(); plt.show()
+# Panel 2: Left (lottery) larger
+fig, ax = plt.subplots(figsize=(7.5,4.5))
+draw_choice(ax, 1.25, 0.85, title="Risk Survey — Lottery Larger")
+plt.tight_layout(); plt.show()
+# Panel 3: Right (sure) larger
+fig, ax = plt.subplots(figsize=(7.5,4.5))
+draw_choice(ax, 0.85, 1.25, title="Risk Survey — Sure Option Larger")
+plt.tight_layout(); plt.show())
